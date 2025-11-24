@@ -1,0 +1,52 @@
+[
+  {
+    "id": "r1",
+    "type": "restroom",
+    "name": "Restroom (Gate 92)",
+    "description": "Clean and accessible",
+    "lat": 21.4227,
+    "lng": 39.8264,
+    "city": "Makkah",
+    "tags": ["24h", "wheelchair"]
+  },
+  {
+    "id": "w1",
+    "type": "wudu",
+    "name": "Wudu Area North",
+    "description": "High capacity ablution area",
+    "lat": 21.4222,
+    "lng": 39.8261,
+    "city": "Makkah",
+    "tags": ["family"]
+  },
+  {
+    "id": "z1",
+    "type": "zamzam",
+    "name": "Zamzam Point (Level 1)",
+    "description": "Chilled dispenser near Tawaf floor",
+    "lat": 21.4229,
+    "lng": 39.8268,
+    "city": "Makkah",
+    "tags": ["cold", "cups"]
+  },
+  {
+    "id": "c1",
+    "type": "clinic",
+    "name": "Red Crescent Clinic",
+    "description": "First aid and medical support",
+    "lat": 21.4232,
+    "lng": 39.8270,
+    "city": "Makkah",
+    "tags": ["24h"]
+  },
+  {
+    "id": "g1",
+    "type": "gate",
+    "name": "King Abdulaziz Gate",
+    "description": "Main gate to Masjid al-Haram",
+    "lat": 21.4226,
+    "lng": 39.8263,
+    "city": "Makkah",
+    "tags": ["landmark"]
+  }
+]
