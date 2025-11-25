@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
+import 'package:url_launcher/url_launcher.dart';
 
 class AdminMemberDetailScreen extends StatefulWidget {
   final String userId;
@@ -26,6 +27,8 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
   List<Map<String, dynamic>> _devices = [];
   Map<String, dynamic>? _latestData;
   Timer? _refreshTimer;
+  bool isDeviceConnected = false;
+  DateTime? _lastDataTime;
 
   @override
   void initState() {
@@ -66,6 +69,12 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
           final dataList = dataRes as List<dynamic>;
           if (dataList.isNotEmpty) {
             _latestData = dataList.first as Map<String, dynamic>;
+            final timestamp = _latestData?['created_at'] as String?;
+            if (timestamp != null) {
+              _lastDataTime = DateTime.parse(timestamp);
+              final difference = DateTime.now().difference(_lastDataTime!);
+              isDeviceConnected = difference.inSeconds < 30;
+            }
           }
         }
       }
@@ -76,26 +85,242 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
     }
   }
 
-  Widget _buildInfoCard(String title, String value, IconData icon, Color color) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(icon, size: 40, color: color),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+  Widget _buildClickableGpsCard(String latitude, String longitude, bool isConnected) {
+    final lat = double.tryParse(latitude);
+    final lng = double.tryParse(longitude);
+    final hasValidCoords = lat != null && lng != null && lat != 0.0 && lng != 0.0;
+    final displayValue = hasValidCoords ? '$latitude, $longitude' : 'Acquiring GPS...';
+    
+    return InkWell(
+      onTap: hasValidCoords && isConnected
+          ? () => _openInGoogleMaps(lat, lng)
+          : null,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isConnected ? Colors.grey.shade200 : Colors.red.shade200,
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 15,
+              offset: const Offset(0, 5),
             ),
           ],
         ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.location_on, color: Colors.blue, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        "GPS Location",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      if (hasValidCoords && isConnected) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.open_in_new, size: 12, color: Colors.blue.shade700),
+                              const SizedBox(width: 4),
+                              Text(
+                                "Tap to view",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.blue.shade700,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isConnected ? displayValue : "--",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isConnected ? Colors.black87 : Colors.grey.shade400,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    isConnected ? "Live Tracking Active" : "Device Offline",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (hasValidCoords && isConnected)
+              Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey.shade400),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactCard(
+    IconData icon,
+    String title,
+    String value,
+    Color bgColor,
+    Color iconColor,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDeviceConnected ? Colors.grey.shade200 : Colors.red.shade200,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor, size: 24),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            isDeviceConnected ? value : "--",
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: isDeviceConnected ? Colors.black87 : Colors.grey.shade400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIotCard(
+    IconData icon,
+    String title,
+    String value,
+    String subtitle,
+    Color bgColor,
+    Color iconColor,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDeviceConnected ? Colors.grey.shade200 : Colors.red.shade200,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isDeviceConnected ? value : "--",
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDeviceConnected ? Colors.black87 : Colors.grey.shade400,
+                  ),
+                ),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -109,17 +334,34 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
     final latitude = payload?['latitude']?.toString() ?? '--';
     final longitude = payload?['longitude']?.toString() ?? '--';
     final battery = payload?['battery']?.toString() ?? '--';
-    final timestamp = _latestData?['created_at'] as String?;
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        title: Text(widget.userName),
-        backgroundColor: const Color(0xFF4663AC),
-        foregroundColor: Colors.white,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFF1A4363),
+                Color(0xFF3572A6),
+                Color(0xFF67A9D5),
+                Color(0xFFA2D0E6),
+                Color(0xFFEBF2F6),
+              ],
+            ),
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(widget.userName, style: const TextStyle(color: Colors.white)),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
+            tooltip: 'Refresh Data',
           ),
         ],
       ),
@@ -213,119 +455,147 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
                   const SizedBox(height: 24),
 
                   // IoT Data Section
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Latest IoT Data',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                      if (timestamp != null)
-                        Text(
-                          _formatTimestamp(timestamp),
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-
-                  if (_latestData == null)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Icon(Icons.sensors_off, size: 48, color: Colors.grey.shade400),
-                            const SizedBox(height: 12),
-                            Text(
-                              'No data received yet',
-                              style: TextStyle(color: Colors.grey.shade600),
+                            const Row(
+                              children: [
+                                Icon(Icons.sensors, color: Color(0xFF4663AC), size: 22),
+                                SizedBox(width: 8),
+                                Text(
+                                  "Real-Time Monitoring",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Waiting for IoT device to send data...',
-                              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isDeviceConnected ? Colors.green.shade50 : Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.circle,
+                                    size: 10,
+                                    color: isDeviceConnected ? Colors.green : Colors.red,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    isDeviceConnected ? "Connected" : "Offline",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDeviceConnected ? Colors.green.shade700 : Colors.red.shade700,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
+                        const SizedBox(height: 16),
+                        if (_lastDataTime != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Last update: ${_formatTimestamp(_lastDataTime!)}',
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  if (_latestData == null)
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(Icons.sensors_off, size: 48, color: Colors.grey.shade400),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No data received yet',
+                            style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Waiting for IoT device to send data...',
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                          ),
+                        ],
                       ),
                     )
                   else
                     Column(
                       children: [
-                        // Vital Signs Row
                         Row(
                           children: [
                             Expanded(
-                              child: _buildInfoCard(
-                                'Heart Rate',
-                                '$heartRate bpm',
+                              child: _buildCompactCard(
                                 Icons.favorite,
+                                "Heart Rate",
+                                '$heartRate bpm',
+                                Colors.red.shade50,
                                 Colors.red,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 12),
                             Expanded(
-                              child: _buildInfoCard(
-                                'Temperature',
-                                '$temperature°C',
-                                Icons.thermostat,
-                                Colors.orange,
+                              child: _buildCompactCard(
+                                Icons.battery_charging_full,
+                                "Battery",
+                                '$battery%',
+                                Colors.green.shade50,
+                                Colors.green,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
-
-                        // Location Row
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildInfoCard(
-                                'Latitude',
-                                latitude,
-                                Icons.location_on,
-                                Colors.blue,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildInfoCard(
-                                'Longitude',
-                                longitude,
-                                Icons.location_on,
-                                Colors.blue,
-                              ),
-                            ),
-                          ],
+                        const SizedBox(height: 12),
+                        _buildClickableGpsCard(
+                          latitude,
+                          longitude,
+                          isDeviceConnected,
                         ),
-                        const SizedBox(height: 8),
-
-                        // Battery
-                        _buildInfoCard(
-                          'Battery',
-                          '$battery%',
-                          Icons.battery_charging_full,
-                          Colors.green,
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Raw Payload (for debugging)
-                        ExpansionTile(
-                          title: const Text('Raw Payload'),
-                          leading: const Icon(Icons.code),
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              color: Colors.grey.shade100,
-                              child: SelectableText(
-                                payload?.toString() ?? 'No payload',
-                                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
+                        if (temperature != '--') ...[
+                          const SizedBox(height: 12),
+                          _buildIotCard(
+                            Icons.thermostat,
+                            "Temperature",
+                            '$temperature°C',
+                            "Body Temperature",
+                            Colors.orange.shade50,
+                            Colors.orange,
+                          ),
+                        ],
                       ],
                     ),
                 ],
@@ -334,18 +604,38 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
     );
   }
 
-  String _formatTimestamp(String timestamp) {
+  String _formatTimestamp(DateTime timestamp) {
+    final now = DateTime.now();
+    final diff = now.difference(timestamp);
+    
+    if (diff.inSeconds < 60) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  Future<void> _openInGoogleMaps(double latitude, double longitude) async {
     try {
-      final dt = DateTime.parse(timestamp);
-      final now = DateTime.now();
-      final diff = now.difference(dt);
-      
-      if (diff.inMinutes < 1) return 'Just now';
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      if (diff.inHours < 24) return '${diff.inHours}h ago';
-      return '${diff.inDays}d ago';
+      // Try to open in Google Maps app first (Android/iOS)
+      final geoUri = Uri.parse('geo:$latitude,$longitude?q=$latitude,$longitude');
+      await launchUrl(geoUri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      return timestamp;
+      debugPrint('Could not launch geo URI: $e');
+      try {
+        // Fallback to web browser
+        final webUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$latitude,$longitude');
+        await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+      } catch (e2) {
+        debugPrint('Could not launch web URL: $e2');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error opening maps: $e2'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
   }
 }
