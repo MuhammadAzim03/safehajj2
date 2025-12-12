@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:safehajj2/screen/admin_home_screen.dart';
 import 'package:safehajj2/screen/home_screen.dart';
 import 'package:safehajj2/screen/sign_up_screen.dart';
+import 'package:safehajj2/screen/super_admin_dashboard.dart';
 import 'package:safehajj2/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -59,7 +60,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Navigate based on role
       if (!mounted) return;
-      if (role == 'admin') {
+      if (role == 'super_admin') {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const SuperAdminDashboard()),
+          (route) => false,
+        );
+      } else if (role == 'admin') {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
           (route) => false,

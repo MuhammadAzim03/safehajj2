@@ -191,6 +191,9 @@ create or replace function public.rpc_insert_device_payload(p_device_key text, p
 as $$
 declare
   v_device uuid;
+  v_user_id uuid;
+  v_group_id uuid;
+  v_panic_alert boolean;
 begin
   -- Find the active device matching the token
   select id into v_device from public.devices where device_key = p_device_key and is_active limit 1;
@@ -198,7 +201,19 @@ begin
     raise exception 'invalid_device_token' using hint = 'check device key or device is deactivated';
   end if;
 
+  -- Get device's user_id and group_id
+  select registered_by, group_id into v_user_id, v_group_id from public.devices where id = v_device;
+
   insert into public.device_data(device_id, payload) values (v_device, p_payload);
+
+  -- Check if panic_alert is true in the payload
+  v_panic_alert := (p_payload ->> 'panic_alert')::boolean;
+  
+  -- If panic alert is triggered, create a panic_alert record
+  if v_panic_alert then
+    insert into public.panic_alerts (device_id, user_id, group_id, triggered_at)
+    values (v_device, v_user_id, v_group_id, NOW());
+  end if;
 
   return jsonb_build_object('status', 'ok', 'device_id', v_device);
 end;

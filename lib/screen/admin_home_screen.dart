@@ -17,6 +17,8 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   Map<String, List<Map<String, dynamic>>> _membersByGroup = {};
   Map<String, List<Map<String, dynamic>>> _devicesByGroup = {};
   Map<String, String> _userNames = {};
+  Map<String, int> _panicAlertCounts = {}; // Count of unresolved panic alerts per group
+  Map<String, Set<String>> _alertMembersByGroup = {}; // Track members per group with alerts
 
   @override
   void initState() {
@@ -144,6 +146,32 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
           final regBy = d['registered_by'] as String?;
           d['username'] = _userNames[regBy] ?? 'Unknown User';
         }
+      }
+
+      // Load panic alert counts for each group
+      _panicAlertCounts = {};
+      _alertMembersByGroup = {};
+      try {
+        for (final g in _groups) {
+          final gid = g['id'] as String?;
+          if (gid == null) continue;
+          
+          final alertRes = await _client
+              .from('panic_alerts')
+              .select('id, user_id')
+              .eq('group_id', gid)
+              .filter('resolved_at', 'is', null); // Only count unresolved alerts
+          
+          final alerts = List<Map<String, dynamic>>.from(alertRes as List<dynamic>);
+          final count = alerts.length;
+          _panicAlertCounts[gid] = count;
+            _alertMembersByGroup[gid] = alerts
+              .map((a) => a['user_id'] as String?)
+              .whereType<String>()
+              .toSet();
+        }
+      } catch (e) {
+        debugPrint('load panic alerts error: $e');
       }
     } catch (e) {
       debugPrint('admin dashboard load error: $e');
@@ -286,10 +314,31 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Admin Dashboard'),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFF1A4363),
+                Color(0xFF3572A6),
+                Color(0xFF67A9D5),
+                Color(0xFFA2D0E6),
+                Color(0xFFEBF2F6),
+              ],
+            ),
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text(
+          'Admin Dashboard',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: _signOut,
             tooltip: 'Sign Out',
           ),
@@ -364,6 +413,24 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                                               ),
                                             ),
                                           ],
+                                          if ((_panicAlertCounts[gid] ?? 0) > 0) ...[
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red.shade600,
+                                                borderRadius: BorderRadius.circular(10),
+                                              ),
+                                              child: Text(
+                                                '🚨 ${_panicAlertCounts[gid]}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ],
                                       ),
                                     ),
@@ -417,13 +484,22 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                                     ...members.map((m) {
                                       final role = m['role'] ?? 'member';
                                       final username = m['username'] as String? ?? 'Unknown User';
+                                      final userId = m['user_id'] as String?;
+                                      final hasAlert = userId != null && (_alertMembersByGroup[gid]?.contains(userId) ?? false);
+                                      final memberColor = hasAlert ? Colors.red.shade700 : Colors.black87;
                                       return Padding(
                                         padding: const EdgeInsets.only(bottom: 4),
                                         child: Row(
                                           children: [
-                                            const Icon(Icons.person, size: 16, color: Colors.blueGrey),
+                                            Icon(Icons.person, size: 16, color: hasAlert ? Colors.red.shade700 : Colors.blueGrey),
                                             const SizedBox(width: 6),
-                                            Text('$username  •  $role'),
+                                            Text(
+                                              '$username  •  $role',
+                                              style: TextStyle(
+                                                color: memberColor,
+                                                fontWeight: hasAlert ? FontWeight.w600 : FontWeight.normal,
+                                              ),
+                                            ),
                                           ],
                                         ),
                                       );

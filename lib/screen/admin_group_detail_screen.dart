@@ -21,6 +21,7 @@ class _AdminGroupDetailScreenState extends State<AdminGroupDetailScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _members = [];
   Map<String, String> _userNames = {};
+  Map<String, bool> _userHasPanicAlert = {}; // Track which users have unresolved panic alerts
 
   @override
   void initState() {
@@ -73,6 +74,26 @@ class _AdminGroupDetailScreenState extends State<AdminGroupDetailScreen> {
           debugPrint('load profiles error: $e');
         }
       }
+
+      // Load unresolved panic alerts for this group
+      _userHasPanicAlert = {};
+      try {
+        final alertRes = await _client
+            .from('panic_alerts')
+            .select('user_id')
+            .eq('group_id', widget.groupId)
+            .filter('resolved_at', 'is', null); // Only get unresolved alerts
+        
+        final alerts = List<Map<String, dynamic>>.from(alertRes as List<dynamic>);
+        for (final alert in alerts) {
+          final uid = alert['user_id'] as String?;
+          if (uid != null) {
+            _userHasPanicAlert[uid] = true;
+          }
+        }
+      } catch (e) {
+        debugPrint('load panic alerts error: $e');
+      }
     } catch (e) {
       debugPrint('load members error: $e');
       _members = [];
@@ -85,9 +106,25 @@ class _AdminGroupDetailScreenState extends State<AdminGroupDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.groupName),
-        backgroundColor: const Color(0xFF4663AC),
-        foregroundColor: Colors.white,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color(0xFF1A4363),
+                Color(0xFF3572A6),
+                Color(0xFF67A9D5),
+                Color(0xFFA2D0E6),
+                Color(0xFFEBF2F6),
+              ],
+            ),
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(widget.groupName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -114,6 +151,8 @@ class _AdminGroupDetailScreenState extends State<AdminGroupDetailScreen> {
                         final member = _members[index];
                         final userId = member['user_id'] as String? ?? '';
                         final role = member['role'] as String? ?? 'member';
+                        final bool hasAlert = _userHasPanicAlert[userId] == true;
+                        final bool isAdmin = role == 'admin';
                         final username = _userNames[userId] ?? 'Unknown User';
                         final profile = member['profile'] as Map<String, dynamic>? ?? {};
                         final age = profile['age']?.toString() ?? 'Not set';
@@ -145,13 +184,9 @@ class _AdminGroupDetailScreenState extends State<AdminGroupDetailScreen> {
                             child: Container(
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(16),
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    const Color(0xFF1A4363).withOpacity(0.9),
-                                    const Color(0xFF3572A6).withOpacity(0.9),
-                                  ],
+                                image: const DecorationImage(
+                                  image: AssetImage('assets/images/bgcard.jpg'),
+                                  fit: BoxFit.cover,
                                 ),
                               ),
                               child: Padding(
@@ -163,19 +198,29 @@ class _AdminGroupDetailScreenState extends State<AdminGroupDetailScreen> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Expanded(
-                                          child: Text(
-                                            username,
-                                            style: const TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  username,
+                                                  style: const TextStyle(
+                                                    fontSize: 20,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                         Container(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                           decoration: BoxDecoration(
-                                            color: role == 'admin' ? Colors.green : Colors.blue,
+                                            color: isAdmin
+                                                ? Colors.green
+                                                : hasAlert
+                                                    ? Colors.red.shade600
+                                                    : Colors.blue,
                                             borderRadius: BorderRadius.circular(20),
                                           ),
                                           child: Text(

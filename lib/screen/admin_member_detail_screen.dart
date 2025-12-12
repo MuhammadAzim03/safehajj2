@@ -29,6 +29,7 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
   Timer? _refreshTimer;
   bool isDeviceConnected = false;
   DateTime? _lastDataTime;
+  String? _latestPanicAlertId; // Store the latest panic alert ID
 
   @override
   void initState() {
@@ -69,6 +70,12 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
           final dataList = dataRes as List<dynamic>;
           if (dataList.isNotEmpty) {
             _latestData = dataList.first as Map<String, dynamic>;
+            
+            // Debug: Print the payload to check if panic_alert is present
+            final payload = _latestData?['payload'] as Map<String, dynamic>?;
+            debugPrint('Latest payload: $payload');
+            debugPrint('Panic alert value: ${payload?['panic_alert']}');
+            
             final timestamp = _latestData?['created_at'] as String?;
             if (timestamp != null) {
               _lastDataTime = DateTime.parse(timestamp);
@@ -77,6 +84,26 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
             }
           }
         }
+      }
+
+      // Load the latest unresolved panic alert for this user in this group
+      _latestPanicAlertId = null;
+      try {
+        final alertRes = await _client
+            .from('panic_alerts')
+            .select('id')
+            .eq('user_id', widget.userId)
+            .eq('group_id', widget.groupId)
+            .filter('resolved_at', 'is', null)
+            .order('triggered_at', ascending: false)
+            .limit(1);
+        
+        final alerts = alertRes as List<dynamic>;
+        if (alerts.isNotEmpty) {
+          _latestPanicAlertId = alerts.first['id'] as String?;
+        }
+      } catch (e) {
+        debugPrint('load panic alert error: $e');
       }
     } catch (e) {
       debugPrint('load member data error: $e');
@@ -325,6 +352,64 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
     );
   }
 
+  Future<void> _resolvePanicAlert() async {
+    if (_latestPanicAlertId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No panic alert to resolve')),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Resolve Panic Alert?'),
+        content: const Text('Mark this panic alert as resolved. The admin will be notified.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(c, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Resolve'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final userId = _client.auth.currentUser?.id;
+      if (userId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User not authenticated')),
+        );
+        return;
+      }
+
+      // Call the RPC function to resolve the panic alert
+      await _client.rpc('resolve_panic_alert', params: {
+        'p_alert_id': _latestPanicAlertId,
+        'p_resolved_by': userId,
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Panic alert resolved successfully')),
+      );
+
+      // Reload data to reflect the change
+      await _loadData();
+    } catch (e) {
+      debugPrint('resolve panic alert error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to resolve panic alert: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Extract IoT data from payload
@@ -372,6 +457,93 @@ class _AdminMemberDetailScreenState extends State<AdminMemberDetailScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  // Panic Alert Banner - Show if there's an unresolved panic alert
+                  if (_latestPanicAlertId != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFD32F2F), Color(0xFFE57373)],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.red.withOpacity(0.3),
+                            blurRadius: 15,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.warning_amber_rounded,
+                                  color: Color(0xFFD32F2F),
+                                  size: 32,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '🚨 PANIC ALERT',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'User has pressed the panic button!',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _resolvePanicAlert,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green.shade600,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              child: const Text(
+                                'MARK AS RESOLVED',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Divider(thickness: 2, height: 32),
+                  ],
                   // User Info Section
                   Card(
                     child: Padding(

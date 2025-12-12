@@ -1,5 +1,10 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:typed_data';
+
+final supabaseServiceProvider = Provider<SupabaseService>((ref) {
+  return SupabaseService();
+});
 
 /// Centralized access to Supabase client and common helpers.
 class SupabaseService {
@@ -96,5 +101,11 @@ class SupabaseService {
         );
     final url = client.storage.from('avatars').getPublicUrl(path);
     return url;
+  }
+
+  /// Fetch all items from the 'explore_items' table.
+  Future<List<Map<String, dynamic>>> getExploreItems() async {
+    final data = await client.from('explore_items').select().order('created_at', ascending: false);
+    return (data as List).cast<Map<String, dynamic>>();
   }
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'state/app_settings.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screen/login_screen.dart'; 
+import 'state/super_admin_providers.dart';
+import 'screen/super_admin_dashboard.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,14 +41,14 @@ Future<void> main() async {
   // Load app settings (theme mode, language)
   await AppSettings.instance.init();
 
-  runApp(const SafeHajjApp());
+  runApp(const ProviderScope(child: SafeHajjApp()));
 }
 
-class SafeHajjApp extends StatelessWidget {
+class SafeHajjApp extends ConsumerWidget {
   const SafeHajjApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     // Rebuild MaterialApp when settings change (theme or locale)
     return AnimatedBuilder(
       animation: AppSettings.instance,
@@ -265,8 +268,35 @@ class SafeHajjApp extends StatelessWidget {
           space: 1,
         ),
       ),
-      home: const LoginScreen(),
+      home: const _RoleRouter(),
     ),
+    );
+  }
+}
+
+class _RoleRouter extends ConsumerWidget {
+  const _RoleRouter({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final roleAsync = ref.watch(currentUserRoleProvider);
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      return const LoginScreen();
+    }
+    return roleAsync.when(
+      data: (role) {
+        if (role == 'super_admin') {
+          return const SuperAdminDashboard();
+        } else if (role == 'admin') {
+          // TODO: Replace with existing AdminDashboard widget
+          return const LoginScreen();
+        } else {
+          // TODO: Replace with pilgrim HomeScreen widget
+          return const LoginScreen();
+        }
+      },
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
     );
   }
 }

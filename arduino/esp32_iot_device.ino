@@ -15,11 +15,11 @@ const char* password = "99000203";
 
 // Your Supabase URL + The RPC function path
 const char* serverUrl = "https://ojzmzxokwzwiccbgkuxf.supabase.co/rest/v1/rpc/rpc_insert_device_payload";
-const char* apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qem16eG9rd3p3aWNjYmdrdXhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNDIwMzAsImV4cCI6MjA3NzgxODAzMH0.lVr70zs6t0d7xInKVTbuxQ5R11H3fie__5vsGTpSRkw"; 
+const char* apiKey = "sb_publishable_C6eynsUVAhJmRfTjC5i4QQ_oikzrVQa"; 
 
 // IMPORTANT: Replace this with the actual device token you got from registering your device in the app
 // When you register a device in the SafeHajj app, you'll see a long token - copy it and paste it here
-const char* deviceSecret = "REPLACE_WITH_YOUR_ACTUAL_DEVICE_TOKEN_FROM_APP"; 
+const char* deviceSecret = "trLZje3Z4FfZhFFB5ptYxLGZm6WN9Jk2Y8B20ge-HJFOv8Ktp0zTh2E6pyEgtv4L"; 
 
 // --- PINS ---
 #define RX_PIN 2      // GPS TX -> Pin 2
@@ -27,6 +27,7 @@ const char* deviceSecret = "REPLACE_WITH_YOUR_ACTUAL_DEVICE_TOKEN_FROM_APP";
 #define GPS_BAUD 9600
 #define SDA_PIN 4     // MAX30102 SDA
 #define SCL_PIN 5     // MAX30102 SCL
+#define PANIC_BUTTON_PIN 13  // Panic button connected to GPIO 13 (ESP32 Mini)
 
 // --- OBJECTS ---
 TinyGPSPlus gps;
@@ -41,14 +42,43 @@ long lastBeat = 0;
 int beatAvg = 0;
 float temperature = 0.0;
 
+// Panic button variables
+bool panicButtonPressed = false;
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;  // 50ms debounce time
+int lastButtonState = HIGH;
+int buttonState = HIGH;
+
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  while (!Serial); // Wait for serial monitor to open
+  delay(1000);  // Give it a second to stabilize
+  
+  // Print continuously until Serial Monitor is definitely open
+  for(int i = 0; i < 10; i++) {
+    Serial.println("\n\n==========================================");
+    Serial.println("🚀 ESP32 STARTING UP...");
+    Serial.println("==========================================");
+    delay(500);
+  }
+
+  // INIT PANIC BUTTON FIRST (before anything else that might fail)
+  Serial.println("Step 1: Initializing panic button on GPIO 13...");
+  pinMode(PANIC_BUTTON_PIN, INPUT_PULLUP);
+  delay(100);
+  int testReading = digitalRead(PANIC_BUTTON_PIN);
+  Serial.print("   Button reading: ");
+  Serial.println(testReading);
+  Serial.println(testReading == HIGH ? "   ✓ Button OK (HIGH)" : "   ⚠ Button shows LOW");
+  Serial.println("Step 1: COMPLETE\n");
 
   // 1. Init GPS
+  Serial.println("Step 2: Initializing GPS...");
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RX_PIN, TX_PIN);
+  Serial.println("Step 2: COMPLETE\n");
 
   // 2. Init MAX30102
+  Serial.println("Step 3: Initializing MAX30102 sensor...");
   Wire.begin(SDA_PIN, SCL_PIN);
   if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
     Serial.println("MAX30102 not found. Check wiring.");
@@ -57,9 +87,8 @@ void setup() {
   particleSensor.setup(); 
   particleSensor.setPulseAmplitudeRed(0x0A); 
   particleSensor.setPulseAmplitudeGreen(0);
-  
-  // Enable temperature reading
-  particleSensor.enableDIETEMPRDY(); 
+  particleSensor.enableDIETEMPRDY();
+  Serial.println("Step 3: COMPLETE\n");
 
   // 3. Init WiFi
   Serial.println("Connecting to WiFi...");
@@ -102,6 +131,46 @@ void setup() {
 }
 
 void loop() {
+  // --- CHECK PANIC BUTTON (with debouncing) ---
+  int reading = digitalRead(PANIC_BUTTON_PIN);
+  
+  // Debug: Print button state every 2 seconds (more frequent for testing)
+  static unsigned long lastButtonDebug = 0;
+  if (millis() - lastButtonDebug > 2000) {
+    Serial.println("==========================================");
+    Serial.print("🔘 PANIC BUTTON STATUS: ");
+    Serial.println(reading == HIGH ? "HIGH (not pressed)" : "LOW (PRESSED!)");
+    Serial.print("   GPIO 13 pin reading: ");
+    Serial.println(reading);
+    Serial.println("==========================================");
+    lastButtonDebug = millis();
+  }
+  
+  // If the button state changed (due to noise or pressing)
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();
+    Serial.print("Button change detected: ");
+    Serial.println(reading == HIGH ? "HIGH" : "LOW");
+  }
+  
+  // If enough time has passed since the last state change
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    // If the button state has changed
+    if (reading != buttonState) {
+      buttonState = reading;
+      
+      // If button is pressed (LOW because of pull-up resistor)
+      if (buttonState == LOW) {
+        panicButtonPressed = true;
+        Serial.println("⚠️⚠️⚠️ PANIC BUTTON PRESSED! ⚠️⚠️⚠️");
+        Serial.println("Panic flag set to TRUE");
+      } else {
+        Serial.println("Button released (HIGH)");
+      }
+    }
+  }
+  lastButtonState = reading;
+
   // --- READ SENSORS ---
   long irValue = particleSensor.getIR();
   
@@ -125,13 +194,21 @@ void loop() {
   // Read Temperature (every loop iteration)
   temperature = particleSensor.readTemperature();
 
+  // --- SEND PANIC ALERT IMMEDIATELY ---
+  if (panicButtonPressed) {
+    Serial.println("Sending panic alert to cloud...");
+    sendDataToCloud(beatAvg, irValue, temperature, true);
+    panicButtonPressed = false;  // Reset the flag
+    delay(1000);  // Prevent multiple rapid alerts
+  }
+
   // --- SEND DATA TO SUPABASE (Every 10 Seconds) ---
   static unsigned long lastSend = 0;
   if (millis() - lastSend > 10000) {
     
     // We send data if we have a heartbeat OR a GPS lock
     if (irValue > 50000 || gps.location.isValid()) {
-      sendDataToCloud(beatAvg, irValue, temperature);
+      sendDataToCloud(beatAvg, irValue, temperature, false);
     } else {
       Serial.println("Idle: No finger & No GPS fix yet.");
     }
@@ -139,7 +216,7 @@ void loop() {
   }
 }
 
-void sendDataToCloud(int bpm, long ir, float temp) {
+void sendDataToCloud(int bpm, long ir, float temp, bool isPanicAlert) {
   // Check WiFi and reconnect if needed
   if(WiFi.status() != WL_CONNECTED){
     Serial.println("WiFi disconnected. Reconnecting...");
@@ -163,10 +240,9 @@ void sendDataToCloud(int bpm, long ir, float temp) {
     http.begin(serverUrl);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("apikey", apiKey);
-    http.addHeader("Authorization", String("Bearer ") + apiKey);
     
     // Construct the JSON for the RPC function
-    StaticJsonDocument<300> doc;
+    StaticJsonDocument<400> doc;  // Increased size to accommodate panic flag
     doc["p_device_key"] = deviceSecret;
     
     // The "p_payload" is a nested JSON object containing our sensor data
@@ -175,6 +251,7 @@ void sendDataToCloud(int bpm, long ir, float temp) {
     payload["ir"] = ir;
     payload["temperature"] = temp;  // Body/sensor temperature in Celsius
     payload["battery"] = 85;  // You can add actual battery reading here
+    payload["panic_alert"] = isPanicAlert;  // Add panic alert flag
     
     if (gps.location.isValid()) {
       payload["latitude"] = gps.location.lat();   // Changed from "lat"
@@ -188,7 +265,11 @@ void sendDataToCloud(int bpm, long ir, float temp) {
     String requestBody;
     serializeJson(doc, requestBody);
 
-    Serial.println("Sending: " + requestBody);
+    if (isPanicAlert) {
+      Serial.println("🚨 SENDING PANIC ALERT: " + requestBody);
+    } else {
+      Serial.println("Sending: " + requestBody);
+    }
     
     int httpCode = http.POST(requestBody);
     
@@ -196,8 +277,14 @@ void sendDataToCloud(int bpm, long ir, float temp) {
       Serial.print("Data Sent! Code: "); Serial.println(httpCode);
       String response = http.getString();
       Serial.println("Response: " + response);
+      if (isPanicAlert) {
+        Serial.println("✓ Panic alert successfully sent to admin!");
+      }
     } else {
       Serial.print("Error: "); Serial.println(httpCode);
+      if (isPanicAlert) {
+        Serial.println("✗ Failed to send panic alert!");
+      }
     }
     http.end();
   }

@@ -1,32 +1,35 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:safehajj2/screen/navigation_screen.dart';
+import 'package:safehajj2/services/supabase_service.dart';
 
-class ExploreScreen extends StatefulWidget {
+// Provider to fetch explore items from Supabase
+final exploreItemsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final supabaseService = ref.watch(supabaseServiceProvider);
+  return supabaseService.getExploreItems();
+});
+
+class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({super.key});
 
   @override
-  State<ExploreScreen> createState() => _ExploreScreenState();
+  ConsumerState<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProviderStateMixin {
+class _ExploreScreenState extends ConsumerState<ExploreScreen> with SingleTickerProviderStateMixin {
   // Feature flags so you can easily remove sections without refactoring
   static const bool showSearchBar = true;
   static const bool showCategories = false;
   static const bool showCityFilter = true;
   static const bool showMapPreview = false; // reserved for future
 
-  late Future<List<Map<String, dynamic>>> _itemsFuture;
   late AnimationController _animController;
-  String _selectedCategory = 'All';
-  String? _selectedCity = 'Makkah'; // Nullable to allow showing all
+  String? _selectedCity = 'Makkah'; // Default selection
+  String _selectedCategory = 'All'; // Add this line
 
   @override
   void initState() {
     super.initState();
-    _itemsFuture = _loadItems();
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -40,18 +43,10 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
     super.dispose();
   }
 
-  Future<List<Map<String, dynamic>>> _loadItems() async {
-    try {
-      final jsonStr = await rootBundle.loadString('assets/data/explore_items.json');
-      final data = json.decode(jsonStr) as List<dynamic>;
-      return data.cast<Map<String, dynamic>>();
-    } catch (_) {
-      return [];
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final itemsAsync = ref.watch(exploreItemsProvider);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: CustomScrollView(
@@ -183,218 +178,19 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
 
           // Content
           SliverToBoxAdapter(
-            child: FutureBuilder<List<Map<String, dynamic>>>(
-              future: _itemsFuture,
-              builder: (context, snapshot) {
-                // Filter essentials based on selected city
-                final List<Map<String, dynamic>> essentials;
-                
-                if (_selectedCity == null) {
-                  // Show all locations from both cities
-                  essentials = [
-                    // Madinah
-                    {
-                      "name": "Bab Jebreel Health Center",
-                      "type": "clinic",
-                      "description": "Official health center near Gate 94.",
-                      "tags": ["Official", "24/7"],
-                      "distance": "250m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Free Medical Center",
-                      "type": "clinic",
-                      "description": "Volunteer-run medical services.",
-                      "tags": ["Free", "Charity"],
-                      "distance": "400m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Faraj Al Madinah Hotel",
-                      "type": "landmark",
-                      "description": "Comfortable accommodation near the Haram.",
-                      "tags": ["Hotel", "Accommodation"],
-                      "distance": "500m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Al Madinah Golden Hotel",
-                      "type": "landmark",
-                      "description": "Premium hotel with modern amenities.",
-                      "tags": ["Hotel", "Premium"],
-                      "distance": "650m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Arabesque Restaurant",
-                      "type": "food",
-                      "description": "Traditional Middle Eastern cuisine.",
-                      "tags": ["Restaurant", "Halal"],
-                      "distance": "300m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Habibi Restaurant",
-                      "type": "food",
-                      "description": "Popular dining spot with local flavors.",
-                      "tags": ["Restaurant", "Popular"],
-                      "distance": "450m",
-                      "city": "Madinah"
-                    },
-                    // Makkah
-                    {
-                      "name": "Haram Emergency Hospital",
-                      "type": "clinic",
-                      "description": "Emergency medical services near the Haram.",
-                      "tags": ["Emergency", "24/7"],
-                      "distance": "300m",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "King Faisal Hospital",
-                      "type": "clinic",
-                      "description": "Major hospital facility in Makkah.",
-                      "tags": ["Hospital", "Full Service"],
-                      "distance": "1.2km",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "Azka Al Maqam",
-                      "type": "landmark",
-                      "description": "Luxury hotel near the Haram.",
-                      "tags": ["Hotel", "Luxury"],
-                      "distance": "400m",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "InterContinental Dar al Tawhid Makkah",
-                      "type": "landmark",
-                      "description": "5-star hotel with stunning Haram views.",
-                      "tags": ["Hotel", "5-Star"],
-                      "distance": "350m",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "Al Bayt Restaurant",
-                      "type": "food",
-                      "description": "Authentic Saudi cuisine and traditional dishes.",
-                      "tags": ["Restaurant", "Saudi"],
-                      "distance": "280m",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "Al Shorfa Restaurant",
-                      "type": "food",
-                      "description": "Fine dining with panoramic city views.",
-                      "tags": ["Restaurant", "Fine Dining"],
-                      "distance": "500m",
-                      "city": "Makkah"
-                    }
-                  ];
-                } else if (_selectedCity == 'Madinah') {
-                  essentials = [
-                    {
-                      "name": "Bab Jebreel Health Center",
-                      "type": "clinic",
-                      "description": "Official health center near Gate 94.",
-                      "tags": ["Official", "24/7"],
-                      "distance": "250m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Free Medical Center",
-                      "type": "clinic",
-                      "description": "Volunteer-run medical services.",
-                      "tags": ["Free", "Charity"],
-                      "distance": "400m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Faraj Al Madinah Hotel",
-                      "type": "landmark",
-                      "description": "Comfortable accommodation near the Haram.",
-                      "tags": ["Hotel", "Accommodation"],
-                      "distance": "500m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Al Madinah Golden Hotel",
-                      "type": "landmark",
-                      "description": "Premium hotel with modern amenities.",
-                      "tags": ["Hotel", "Premium"],
-                      "distance": "650m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Arabesque Restaurant",
-                      "type": "food",
-                      "description": "Traditional Middle Eastern cuisine.",
-                      "tags": ["Restaurant", "Halal"],
-                      "distance": "300m",
-                      "city": "Madinah"
-                    },
-                    {
-                      "name": "Habibi Restaurant",
-                      "type": "food",
-                      "description": "Popular dining spot with local flavors.",
-                      "tags": ["Restaurant", "Popular"],
-                      "distance": "450m",
-                      "city": "Madinah"
-                    }
-                  ];
-                } else {
-                  // Makkah hospitals
-                  essentials = [
-                    {
-                      "name": "Haram Emergency Hospital",
-                      "type": "clinic",
-                      "description": "Emergency medical services near the Haram.",
-                      "tags": ["Emergency", "24/7"],
-                      "distance": "300m",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "King Faisal Hospital",
-                      "type": "clinic",
-                      "description": "Major hospital facility in Makkah.",
-                      "tags": ["Hospital", "Full Service"],
-                      "distance": "1.2km",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "Azka Al Maqam",
-                      "type": "landmark",
-                      "description": "Luxury hotel near the Haram.",
-                      "tags": ["Hotel", "Luxury"],
-                      "distance": "400m",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "InterContinental Dar al Tawhid Makkah",
-                      "type": "landmark",
-                      "description": "5-star hotel with stunning Haram views.",
-                      "tags": ["Hotel", "5-Star"],
-                      "distance": "350m",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "Al Bayt Restaurant",
-                      "type": "food",
-                      "description": "Authentic Saudi cuisine and traditional dishes.",
-                      "tags": ["Restaurant", "Saudi"],
-                      "distance": "280m",
-                      "city": "Makkah"
-                    },
-                    {
-                      "name": "Al Shorfa Restaurant",
-                      "type": "food",
-                      "description": "Fine dining with panoramic city views.",
-                      "tags": ["Restaurant", "Fine Dining"],
-                      "distance": "500m",
-                      "city": "Makkah"
-                    }
-                  ];
-                }
+            child: itemsAsync.when(
+              loading: () => const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+              error: (err, stack) => _emptyBox('Error loading data: $err'),
+              data: (items) {
+                // Filter items based on the selected city (_selectedCity)
+                final filteredItems = _selectedCity == null
+                    ? items
+                    : items.where((item) => item['city'] == _selectedCity).toList();
 
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -426,9 +222,9 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
                             ),
                           ),
                           const SizedBox(width: 12),
-                          const Text(
-                            'Essentials near you',
-                            style: TextStyle(
+                          Text(
+                            _selectedCity == null ? 'All Essentials' : 'Essentials in $_selectedCity',
+                            style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 20,
                               color: Colors.black87,
@@ -439,20 +235,13 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
                     ),
                     const SizedBox(height: 16),
 
-                    if (snapshot.connectionState == ConnectionState.waiting)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 40),
-                          child: CircularProgressIndicator(),
-                        ),
-                      ),
-                    if (essentials.isEmpty)
-                      _emptyBox('No essentials found')
+                    if (filteredItems.isEmpty)
+                      _emptyBox('No essentials found for the selected city.')
                     else
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: Column(
-                          children: essentials.map(_buildModernPoiCard).toList(),
+                          children: filteredItems.map(_buildModernPoiCard).toList(),
                         ),
                       ),
 
@@ -646,24 +435,16 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
   }
 
   Widget _buildModernPoiCard(Map<String, dynamic> e) {
-    final type = (e['type'] ?? '').toString();
-    final name = (e['name'] ?? '').toString();
-    final desc = (e['description'] ?? '').toString();
-    final tags = (e['tags'] as List?)?.cast<String>() ?? [];
-    final distance = (e['distance'] ?? '').toString();
-    final city = (e['city'] ?? _selectedCity ?? 'Madinah').toString(); // Get city from data or use selected
+    final name = (e['title'] ?? 'No Title').toString();
+    final desc = (e['description'] ?? 'No Description').toString();
+    final imageUrl = e['image_url'] as String?;
+    final type = (e['type'] ?? 'Other').toString();
+    final city = (e['city'] ?? _selectedCity ?? 'Makkah').toString();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.white,
-            const Color(0xFFC8D9ED).withOpacity(0.1),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -686,7 +467,7 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
                   destinationName: name,
                   destinationType: type,
                   description: desc,
-                  distance: distance,
+                  distance: 'N/A', // Distance is not available from DB yet
                   city: city,
                 ),
               ),
@@ -696,31 +477,19 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // Icon with gradient background
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        const Color(0xFF4663AC),
-                        const Color(0xFF1E88E5),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                // Icon or Image
+                SizedBox(
+                  width: 60,
+                  height: 60,
+                  child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF4663AC).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    _iconForType(type),
-                    color: Colors.white,
-                    size: 28,
+                    child: (imageUrl != null && imageUrl.isNotEmpty)
+                        ? Image.network(
+                            imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _defaultIcon(type),
+                          )
+                        : _defaultIcon(type),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -730,7 +499,7 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        name.isEmpty ? type.toUpperCase() : name,
+                        name,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -739,75 +508,41 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        desc.isNotEmpty ? desc : 'Nearby facility',
+                        desc,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.grey.shade600,
                         ),
                       ),
-                      if (tags.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          children: tags.take(2).map((tag) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF4663AC).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                tag,
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF4663AC),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ],
                     ],
                   ),
                 ),
-                // Distance badge and arrow
-                Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1E88E5).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        '< 1km',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E88E5),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Icon(
-                      Icons.arrow_forward_ios,
-                      color: Colors.grey.shade400,
-                      size: 16,
-                    ),
-                  ],
+                // Arrow
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  color: Colors.grey,
+                  size: 16,
                 ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _defaultIcon(String type) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF4663AC), Color(0xFF1E88E5)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Icon(_iconForType(type), color: Colors.white, size: 28),
     );
   }
 
@@ -849,15 +584,18 @@ class _ExploreScreenState extends State<ExploreScreen> with SingleTickerProvider
   }
 
   IconData _iconForType(String type) {
+    // Use type from DB to determine icon
     switch (type.toLowerCase()) {
-      case 'clinic':
+      case 'hospital':
         return Icons.local_hospital;
-      case 'food':
-        return Icons.restaurant;
-      case 'transport':
-        return Icons.directions_bus;
-      case 'landmark':
+      case 'hotel':
         return Icons.hotel;
+      case 'restaurant':
+        return Icons.restaurant;
+      case 'landmark':
+        return Icons.account_balance;
+      case 'other':
+        return Icons.place;
       default:
         return Icons.location_on_outlined;
     }
